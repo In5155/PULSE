@@ -10,15 +10,15 @@ import {
   where, getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// ─── Firebase Config ────────────────────────────────────────────────────────
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_AUTH_DOMAIN",
-  projectId: "YOUR_PROJECT_ID",
-  databaseURL: "YOUR_DATABASE_URL",
-  storageBucket: "YOUR_STORAGE_BUCKET",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyCh04gMSY4-oPo3IC0Y2QUXwlbbTh0VLhs",
+  authDomain: "pulse-57286.firebaseapp.com",
+  projectId: "pulse-57286",
+  storageBucket: "pulse-57286.firebasestorage.app",
+  messagingSenderId: "85551122165",
+  appId: "1:85551122165:web:84b7aac887e3a01e5167bc",
+  measurementId: "G-N3LX2FVEGK"
 };
 
 const app = initializeApp(firebaseConfig);
