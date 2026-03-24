@@ -344,8 +344,15 @@ function renderContactItem(uid, code, isInboxOnly) {
   nameSpan.innerText = code;
   item.appendChild(nameSpan);
 
-  if (isInboxOnly) {
-    // Small badge to show this person texted you (not yet added)
+  // Add Delete Button (only for manual contacts, not inbox-only)
+  if (!isInboxOnly) {
+    const delBtn = document.createElement("button");
+    delBtn.innerText = "✕";
+    delBtn.classList.add("delete-contact-btn");
+    delBtn.onclick = (e) => deleteContact(uid, e);
+    item.appendChild(delBtn);
+  } else {
+    // Keep your existing "New" badge for inbox items
     const badge = document.createElement("span");
     badge.classList.add("inbox-badge");
     badge.innerText = "New";
@@ -484,6 +491,30 @@ sendBtn.onclick = async () => {
 messageInput.addEventListener("keypress", (e) => {
   if (e.key === "Enter") sendBtn.click();
 });
+
+import { deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+async function deleteContact(contactUid, event) {
+  // Prevent the click from opening the chat window
+  event.stopPropagation(); 
+  
+  if (!confirm("Are you sure you want to remove this contact?")) return;
+
+  try {
+    const contactRef = doc(db, "users", currentUser.uid, "contacts", contactUid);
+    await deleteDoc(contactRef);
+    
+    // If we are currently chatting with this person, close the window
+    if (currentPartnerUid === contactUid) {
+      activeChatWindow.classList.add("hidden");
+      noChatSelected.classList.remove("hidden");
+      currentChatId = null;
+    }
+  } catch (err) {
+    console.error("Error deleting contact:", err);
+    alert("Failed to delete contact.");
+  }
+}
 
 function loadMessages() {
   if (!currentChatId) return;
