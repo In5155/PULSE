@@ -13,7 +13,7 @@
   --bubble-sent:      #4f46e5;
   --bubble-received:  #e5e7eb;
   --receipt-default:  rgba(255, 255, 255, 0.55);
-  --receipt-read:     #a5f3fc;   /* light cyan tick when read */
+  --receipt-read:     #a5f3fc;
 }
 
 /* ─── Reset / Base ──────────────────────────────────────────────────────── */
@@ -26,13 +26,13 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--bg-color);
   color: var(--text-main);
-  height: 100vh;
+  height: 100dvh;
   overflow: hidden;
 }
 
 .screen {
   display: flex;
-  height: 100vh;
+  height: 100dvh;
   width: 100vw;
 }
 
@@ -44,6 +44,7 @@ body {
 #auth-screen {
   align-items: center;
   justify-content: center;
+  padding: 16px;
 }
 
 .auth-card {
@@ -67,7 +68,7 @@ body {
   margin-bottom: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 16px; /* 16px prevents iOS zoom on focus */
   transition: border-color 0.2s;
 }
 
@@ -116,6 +117,8 @@ button {
   font-weight: 500;
   cursor: pointer;
   transition: background 0.2s, opacity 0.2s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 .primary-btn {
@@ -195,6 +198,7 @@ button {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  overflow-y: auto;
 }
 
 .profile-section,
@@ -235,7 +239,6 @@ button {
   color: var(--text-main);
 }
 
-/* Inline username-edit form */
 #edit-code-area {
   margin-top: 10px;
 }
@@ -246,7 +249,7 @@ button {
   border: 1px solid var(--border);
   border-radius: 6px;
   margin-bottom: 8px;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 .edit-code-actions {
@@ -254,7 +257,6 @@ button {
   gap: 8px;
 }
 
-/* Add-contact controls */
 .add-contact-controls {
   display: flex;
   gap: 8px;
@@ -265,7 +267,7 @@ button {
   padding: 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 16px;
 }
 
 /* Contacts list */
@@ -280,11 +282,12 @@ button {
 }
 
 .contact-item {
-  padding: 12px 20px;
+  padding: 14px 20px;
   cursor: pointer;
   border-bottom: 1px solid var(--bg-color);
   font-weight: 500;
   transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .contact-item:hover,
@@ -301,7 +304,6 @@ button {
   overflow: hidden;
 }
 
-/* Placeholder shown before any contact is selected */
 .empty-state {
   flex: 1;
   display: flex;
@@ -311,7 +313,6 @@ button {
   font-size: 16px;
 }
 
-/* Active conversation wrapper */
 #active-chat-window {
   flex: 1;
   display: flex;
@@ -322,15 +323,30 @@ button {
 
 /* Chat header */
 .chat-header {
-  padding: 20px;
+  padding: 16px 20px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .chat-header h3 {
   margin: 0;
   font-size: 18px;
+}
+
+/* Back button — hidden on desktop, shown on mobile */
+#back-btn {
+  display: none;
+  background: transparent;
+  color: var(--primary);
+  padding: 4px 8px;
+  font-size: 22px;
+  line-height: 1;
+  border-radius: 6px;
+  flex-shrink: 0;
 }
 
 /* ─── Message Bubbles ────────────────────────────────────────────────────── */
@@ -341,6 +357,7 @@ button {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .message {
@@ -381,11 +398,6 @@ button {
 }
 
 /* ─── Read Receipts ──────────────────────────────────────────────────────── */
-/*
- * Shown only on sent messages, aligned below the bubble.
- * ✓  = sent (grey/dim)
- * ✓✓ = read (cyan / brighter)
- */
 .read-receipt {
   font-size: 11px;
   font-weight: 600;
@@ -393,7 +405,7 @@ button {
   line-height: 1;
   white-space: nowrap;
   user-select: none;
-  margin-bottom: 4px; /* aligns with bottom of bubble */
+  margin-bottom: 4px;
   transition: color 0.3s;
 }
 
@@ -418,7 +430,8 @@ button {
 
 /* ─── Message Input Bar ──────────────────────────────────────────────────── */
 .input-area {
-  padding: 16px 20px;
+  padding: 12px 16px;
+  padding-bottom: calc(12px + env(safe-area-inset-bottom));
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: flex;
@@ -431,7 +444,7 @@ button {
   padding: 14px 18px;
   border: 1px solid var(--border);
   border-radius: 24px;
-  font-size: 15px;
+  font-size: 16px; /* prevents iOS zoom */
   transition: border-color 0.2s;
 }
 
@@ -443,4 +456,54 @@ button {
 .input-area button {
   border-radius: 24px;
   padding: 0 24px;
+  flex-shrink: 0;
+}
+
+/* ─── Mobile Styles ──────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+
+  #back-btn {
+    display: block;
+  }
+
+  #chat-screen {
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Sidebar fills the full screen on mobile */
+  .sidebar {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    z-index: 10;
+    transition: transform 0.3s ease;
+  }
+
+  /* When a chat is open, slide the sidebar off to the left */
+  #chat-screen.chat-open .sidebar {
+    transform: translateX(-100%);
+  }
+
+  /* Chat container fills the full screen */
+  .chat-container {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+  }
+
+  /* When a chat is open, slide the chat in from the right */
+  #chat-screen.chat-open .chat-container {
+    transform: translateX(0);
+  }
+
+  .message {
+    max-width: 85%;
+  }
+
+  .auth-card {
+    padding: 28px 20px;
+  }
 }
