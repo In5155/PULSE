@@ -295,6 +295,34 @@ button {
   background: var(--bg-color);
 }
 
+/* Container for contact and delete button */
+.contact-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: relative;
+}
+
+.delete-contact-btn {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0; /* Hidden by default */
+  transition: opacity 0.2s;
+}
+
+.contact-item:hover .delete-contact-btn {
+  opacity: 1; /* Show on hover */
+}
+
+.delete-contact-btn:hover {
+  background: #fecaca;
+}
+
 /* ─── Main Chat Area ─────────────────────────────────────────────────────── */
 .chat-container {
   flex: 1;
