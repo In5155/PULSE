@@ -494,31 +494,41 @@ messageInput.addEventListener("keypress", (e) => {
 
 import { deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+// Add deleteDoc to your imports at the top of app.js
+import { 
+  getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc, // ...other imports
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
 async function deleteContact(contactUid, event) {
   event.stopPropagation(); 
   
-  if (!confirm("Are you sure you want to remove this contact and conversation?")) return;
+  if (!confirm("Remove this contact and clear them from your inbox?")) return;
 
   try {
-    // 1. Remove from manual contacts
+    // 1. Define the references
     const contactRef = doc(db, "users", currentUser.uid, "contacts", contactUid);
+    const inboxRef = doc(db, "users", currentUser.uid, "inbox", contactUid);
+
+    // 2. Delete both (Order matters: delete from inbox so 'New' badge logic doesn't trigger)
+    await deleteDoc(inboxRef);
     await deleteDoc(contactRef);
     
-    // 2. Remove from inbox (this stops the "New" badge from appearing)
-    const inboxRef = doc(db, "users", currentUser.uid, "inbox", contactUid);
-    await deleteDoc(inboxRef);
-    
-    // 3. UI Cleanup
+    // 3. Close the chat if it's the one we just deleted
     if (currentPartnerUid === contactUid) {
       activeChatWindow.classList.add("hidden");
       noChatSelected.classList.remove("hidden");
       currentChatId = null;
+      currentPartnerUid = null;
+      unsubscribeMessages?.();
+      unsubscribeTyping?.();
     }
+
+    console.log("Contact fully removed.");
   } catch (err) {
-    console.error("Error deleting contact:", err);
+    console.error("Delete failed:", err);
+    alert("Error: " + err.message);
   }
 }
-
 function loadMessages() {
   if (!currentChatId) return;
   unsubscribeMessages?.();
