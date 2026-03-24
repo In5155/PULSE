@@ -495,16 +495,20 @@ messageInput.addEventListener("keypress", (e) => {
 import { deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 async function deleteContact(contactUid, event) {
-  // Prevent the click from opening the chat window
   event.stopPropagation(); 
   
-  if (!confirm("Are you sure you want to remove this contact?")) return;
+  if (!confirm("Are you sure you want to remove this contact and conversation?")) return;
 
   try {
+    // 1. Remove from manual contacts
     const contactRef = doc(db, "users", currentUser.uid, "contacts", contactUid);
     await deleteDoc(contactRef);
     
-    // If we are currently chatting with this person, close the window
+    // 2. Remove from inbox (this stops the "New" badge from appearing)
+    const inboxRef = doc(db, "users", currentUser.uid, "inbox", contactUid);
+    await deleteDoc(inboxRef);
+    
+    // 3. UI Cleanup
     if (currentPartnerUid === contactUid) {
       activeChatWindow.classList.add("hidden");
       noChatSelected.classList.remove("hidden");
@@ -512,7 +516,6 @@ async function deleteContact(contactUid, event) {
     }
   } catch (err) {
     console.error("Error deleting contact:", err);
-    alert("Failed to delete contact.");
   }
 }
 
