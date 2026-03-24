@@ -507,3 +507,29 @@ button {
     padding: 28px 20px;
   }
 }
+
+/* ── Paste these rules anywhere in styles.css ── */
+
+/* Contact item flex layout to accommodate the badge */
+.contact-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Contacts you haven't added yet — slightly muted */
+.contact-item.inbox-only {
+  color: var(--text-muted);
+}
+
+/* "New" badge shown on unsolicited incoming messages */
+.inbox-badge {
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--primary);
+  color: white;
+  padding: 2px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
