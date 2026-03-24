@@ -212,34 +212,61 @@ saveCodeBtn.onclick = async () => {
 
 // ─── Contacts ────────────────────────────────────────────────────────────────
 
+// ── Replace your addContactBtn.onclick block in app.js with this ──
+
 addContactBtn.onclick = async () => {
   const targetCode = addContactInput.value.trim();
   if (!targetCode) return;
   clearError(contactError);
+
+  // Disable button while working to prevent double-clicks
+  addContactBtn.disabled = true;
+  addContactBtn.innerText = "…";
 
   try {
     const q = query(collection(db, "users"), where("code", "==", targetCode));
     const snap = await getDocs(q);
 
     if (snap.empty) {
-      contactError.innerText = "User not found.";
+      contactError.innerText = "User not found. Check the username and try again.";
       return;
     }
 
     const contactUid = snap.docs[0].id;
+
     if (contactUid === currentUser.uid) {
       contactError.innerText = "You cannot add yourself.";
       return;
     }
 
-    await setDoc(doc(db, "users", currentUser.uid, "contacts", contactUid), {
+    // Check if already added
+    const existingRef = doc(db, "users", currentUser.uid, "contacts", contactUid);
+    const existingSnap = await getDoc(existingRef);
+    if (existingSnap.exists()) {
+      contactError.innerText = "This contact is already in your list.";
+      return;
+    }
+
+    await setDoc(existingRef, {
       uid: contactUid,
       addedAt: Date.now()
     });
 
     addContactInput.value = "";
-  } catch {
-    contactError.innerText = "Error adding contact.";
+    contactError.style.color = "green";
+    contactError.innerText = "Contact added!";
+    setTimeout(() => {
+      contactError.innerText = "";
+      contactError.style.color = "";
+    }, 2000);
+
+  } catch (err) {
+    // Log the real error so you can debug it
+    console.error("Add contact error:", err);
+    contactError.innerText = `Error: ${err.message}`;
+  } finally {
+    addContactBtn.disabled = false;
+    addContactBtn.innerText = "Add";
   }
 };
 
