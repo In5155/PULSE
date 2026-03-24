@@ -7,10 +7,9 @@ import {
 import {
   getFirestore, doc, setDoc, getDoc, updateDoc,
   collection, addDoc, onSnapshot, query, orderBy,
-  where, getDocs
+  where, getDocs, collectionGroup
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyCh04gMSY4-oPo3IC0Y2QUXwlbbTh0VLhs",
   authDomain: "pulse-57286.firebaseapp.com",
@@ -20,7 +19,6 @@ const firebaseConfig = {
   appId: "1:85551122165:web:84b7aac887e3a01e5167bc",
   measurementId: "G-N3LX2FVEGK"
 };
-
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
@@ -90,12 +88,10 @@ function clearError(el) {
 
 // ─── Mobile Navigation ───────────────────────────────────────────────────────
 
-/** Slides into the chat view on mobile (adds class to trigger CSS transition). */
 function openChatView() {
   chatScreen.classList.add("chat-open");
 }
 
-/** Slides back to the contacts list on mobile. */
 function closeChatView() {
   chatScreen.classList.remove("chat-open");
 }
@@ -247,35 +243,94 @@ addContactBtn.onclick = async () => {
   }
 };
 
+// ─── Load Contacts + Inbox (iMessage-style) ──────────────────────────────────
+// Shows BOTH manually added contacts AND anyone who has messaged you —
+// just like how iMessage shows a conversation the moment someone texts you.
+
 function loadContacts() {
   unsubscribeContacts?.();
 
-  const q = query(
-    collection(db, "users", currentUser.uid, "contacts"),
-    orderBy("addedAt", "asc")
-  );
+  const contactsRef = collection(db, "users", currentUser.uid, "contacts");
+  const contactsQuery = query(contactsRef, orderBy("addedAt", "asc"));
 
-  unsubscribeContacts = onSnapshot(q, (snapshot) => {
-    contactsList.innerHTML = "";
-
-    snapshot.forEach(async (docSnap) => {
+  unsubscribeContacts = onSnapshot(contactsQuery, async (snapshot) => {
+    // 1. Collect manually added contacts
+    const manualContacts = new Map(); // uid → code
+    for (const docSnap of snapshot.docs) {
       const { uid } = docSnap.data();
-
       const userRef = await getDoc(doc(db, "users", uid));
-      const contactCode = userRef.exists() ? userRef.data().code : "Unknown User";
+      const code = userRef.exists() ? userRef.data().code : "Unknown User";
+      manualContacts.set(uid, code);
+    }
 
-      const item = document.createElement("div");
-      item.classList.add("contact-item");
-      item.innerText = contactCode;
+    // 2. Find all chats where current user has been messaged
+    //    Chat IDs are always "{smallerUid}_{largerUid}" so we can filter by
+    //    whether the chat ID contains our uid.
+    const inboxUids = new Map(); // uid → code  (people who texted us but we haven't added)
 
-      if (currentChatId === getChatId(currentUser.uid, uid)) {
-        item.classList.add("active");
+    // Query all chats that contain the current user's uid in the chat id.
+    // Firestore doesn't support substring queries, so we fetch chats via
+    // collectionGroup on "messages" and look for sender != us in chats we're in.
+    // Instead, we scan chats by constructing possible chat IDs from known users
+    // isn't feasible at scale — the practical approach used by iMessage-style apps
+    // is to write a "participants" field on each chat when a message is first sent.
+    // We do that automatically in sendBtn.onclick below.
+    // Here we read the "inbox" subcollection we maintain on the user doc.
+
+    const inboxRef = collection(db, "users", currentUser.uid, "inbox");
+    const inboxSnap = await getDocs(inboxRef);
+
+    for (const inboxDoc of inboxSnap.docs) {
+      const senderUid = inboxDoc.id;
+      if (!manualContacts.has(senderUid)) {
+        const userRef = await getDoc(doc(db, "users", senderUid));
+        const code = userRef.exists() ? userRef.data().code : senderUid;
+        inboxUids.set(senderUid, code);
       }
+    }
 
-      item.onclick = () => selectContact(uid, contactCode, item);
-      contactsList.appendChild(item);
-    });
+    // 3. Merge and render
+    renderContactsList(manualContacts, inboxUids);
   });
+}
+
+function renderContactsList(manualContacts, inboxUids) {
+  contactsList.innerHTML = "";
+
+  // Render manual contacts first
+  for (const [uid, code] of manualContacts) {
+    renderContactItem(uid, code, false);
+  }
+
+  // Then render inbox-only (people who texted you but you haven't added)
+  for (const [uid, code] of inboxUids) {
+    renderContactItem(uid, code, true);
+  }
+}
+
+function renderContactItem(uid, code, isInboxOnly) {
+  const item = document.createElement("div");
+  item.classList.add("contact-item");
+  if (isInboxOnly) item.classList.add("inbox-only");
+
+  const nameSpan = document.createElement("span");
+  nameSpan.innerText = code;
+  item.appendChild(nameSpan);
+
+  if (isInboxOnly) {
+    // Small badge to show this person texted you (not yet added)
+    const badge = document.createElement("span");
+    badge.classList.add("inbox-badge");
+    badge.innerText = "New";
+    item.appendChild(badge);
+  }
+
+  if (currentChatId === getChatId(currentUser.uid, uid)) {
+    item.classList.add("active");
+  }
+
+  item.onclick = () => selectContact(uid, code, item);
+  contactsList.appendChild(item);
 }
 
 function selectContact(partnerUid, partnerCode, itemEl) {
@@ -291,7 +346,6 @@ function selectContact(partnerUid, partnerCode, itemEl) {
   chatWithHeader.innerText = partnerCode;
   typingIndicator.classList.add("hidden");
 
-  // Slide into chat view on mobile
   openChatView();
 
   loadMessages();
@@ -377,12 +431,25 @@ sendBtn.onclick = async () => {
   clearTimeout(typingTimeout);
   setTypingState(false);
 
+  // Send the message
   await addDoc(collection(db, "chats", currentChatId, "messages"), {
     text,
     sender: currentUser.uid,
     createdAt: Date.now(),
     readBy: {}
   });
+
+  // ── iMessage-style inbox entry ──────────────────────────────────────────
+  // Write to the recipient's inbox so they see this conversation
+  // even if they haven't added us as a contact.
+  await setDoc(
+    doc(db, "users", currentPartnerUid, "inbox", currentUser.uid),
+    {
+      lastMessageAt: Date.now(),
+      senderUid: currentUser.uid
+    },
+    { merge: true }
+  );
 
   messageInput.value = "";
 };
