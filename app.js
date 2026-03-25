@@ -57,6 +57,7 @@ const messagesDiv      = document.getElementById("messages");
 const messageInput     = document.getElementById("message-input");
 const sendBtn          = document.getElementById("send-btn");
 const typingIndicator  = document.getElementById("typing-indicator");
+const headerPresenceDot = document.getElementById("header-presence-dot");
 
 // ─── App State ───────────────────────────────────────────────────────────────
 let currentUser        = null;
@@ -66,8 +67,12 @@ let currentPartnerCode = null;
 
 let unsubscribeMessages = null;
 let unsubscribeContacts = null;
-let unsubscribeInbox    = null; // New listener tracker
+let unsubscribeInbox    = null;
 let unsubscribeTyping   = null;
+let unsubscribePartnerPresence = null;
+
+// Per-contact presence listeners: uid → unsubscribe fn
+const presenceListeners = new Map();
 
 let typingTimeout = null;
 const TYPING_TIMEOUT_MS = 2500;
@@ -84,6 +89,29 @@ function getChatId(uid1, uid2) {
 function clearError(el) {
   el.innerText = "";
 }
+
+// ─── Presence ─────────────────────────────────────────────────────────────────
+// "Online" = tab is visible AND focused (actually on the tab, not just open)
+
+function isActivelyOnTab() {
+  return document.visibilityState === "visible" && document.hasFocus();
+}
+
+function writePresence(online) {
+  if (!currentUser) return;
+  setDoc(doc(db, "users", currentUser.uid), { online }, { merge: true });
+}
+
+function updatePresence() {
+  writePresence(isActivelyOnTab());
+}
+
+document.addEventListener("visibilitychange", updatePresence);
+window.addEventListener("focus", updatePresence);
+window.addEventListener("blur", updatePresence);
+
+// Best-effort: mark offline if the tab/window closes
+window.addEventListener("beforeunload", () => writePresence(false));
 
 // ─── Mobile Navigation ───────────────────────────────────────────────────────
 function openChatView() {
@@ -152,16 +180,24 @@ onAuthStateChanged(auth, async (user) => {
     }
 
     loadContacts();
+    updatePresence(); // start broadcasting presence
   } else {
     currentUser        = null;
     currentChatId      = null;
     currentPartnerUid  = null;
     currentPartnerCode = null;
 
+    writePresence(false);
+
     unsubscribeContacts?.();
     unsubscribeInbox?.();
     unsubscribeMessages?.();
     unsubscribeTyping?.();
+    unsubscribePartnerPresence?.();
+
+    // Cancel all per-contact presence listeners
+    presenceListeners.forEach(unsub => unsub());
+    presenceListeners.clear();
     
     closeChatView();
     activeChatWindow.classList.add("hidden");
@@ -290,11 +326,34 @@ function renderContactItem(uid, code, isInboxOnly) {
   item.classList.add("contact-item");
   if (isInboxOnly) item.classList.add("inbox-only");
 
+  // Left side: presence dot + name
+  const nameRow = document.createElement("div");
+  nameRow.classList.add("contact-name-row");
+
+  const dot = document.createElement("span");
+  dot.classList.add("presence-dot");
+  nameRow.appendChild(dot);
+
   const nameSpan = document.createElement("span");
   nameSpan.innerText = code;
-  item.appendChild(nameSpan);
+  nameRow.appendChild(nameSpan);
 
-  // Delete button logic
+  item.appendChild(nameRow);
+
+  // Subscribe to this contact's presence and update the dot live
+  presenceListeners.get(uid)?.(); // cancel any previous listener for this uid
+  const unsub = onSnapshot(doc(db, "users", uid), (snap) => {
+    if (snap.exists() && snap.data().online === true) {
+      dot.classList.add("online");
+      dot.title = "Online";
+    } else {
+      dot.classList.remove("online");
+      dot.title = "Offline";
+    }
+  });
+  presenceListeners.set(uid, unsub);
+
+  // Delete button
   const delBtn = document.createElement("button");
   delBtn.innerText = "✕";
   delBtn.classList.add("delete-contact-btn");
@@ -347,6 +406,19 @@ function selectContact(partnerUid, partnerCode, itemEl) {
   activeChatWindow.classList.remove("hidden");
   chatWithHeader.innerText = partnerCode;
   
+  // Live presence dot in the chat header
+  unsubscribePartnerPresence?.();
+  headerPresenceDot.className = ""; // reset
+  unsubscribePartnerPresence = onSnapshot(doc(db, "users", partnerUid), (snap) => {
+    if (snap.exists() && snap.data().online === true) {
+      headerPresenceDot.classList.add("online");
+      headerPresenceDot.title = `${partnerCode} is online`;
+    } else {
+      headerPresenceDot.classList.remove("online");
+      headerPresenceDot.title = `${partnerCode} is offline`;
+    }
+  });
+
   openChatView();
   loadMessages();
   listenForTyping();
