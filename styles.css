@@ -323,6 +323,50 @@ button {
   background: #fecaca;
 }
 
+/* ─── Presence Dot ───────────────────────────────────────────────────────── */
+.contact-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.presence-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #d1d5db; /* offline: grey */
+  transition: background 0.4s ease, box-shadow 0.4s ease;
+}
+
+.presence-dot.online {
+  background: #22c55e; /* online: green */
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+}
+
+/* Dot in the chat header */
+.chat-header-presence {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#header-presence-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: #d1d5db;
+  transition: background 0.4s ease, box-shadow 0.4s ease;
+}
+
+#header-presence-dot.online {
+  background: #22c55e;
+  box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.25);
+}
+
 /* ─── Main Chat Area ─────────────────────────────────────────────────────── */
 .chat-container {
   flex: 1;
@@ -441,45 +485,19 @@ button {
   color: var(--receipt-read);
 }
 
-/* ─── Typing Indicator Bubble ────────────────────────────────────────────── */
+/* ─── Typing Indicator ───────────────────────────────────────────────────── */
 .typing-indicator {
-  display: flex;
-  align-items: flex-end;
-  padding: 0 20px 6px;
+  padding: 6px 20px 2px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-style: italic;
   flex-shrink: 0;
-  animation: fadeInUp 0.2s ease;
+  animation: fadeIn 0.2s ease;
 }
 
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(6px); }
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
-}
-
-.typing-bubble {
-  background: var(--bubble-received);
-  border-radius: 16px;
-  border-bottom-left-radius: 4px;
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.typing-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  animation: typingBounce 1.2s ease-in-out infinite;
-}
-
-.typing-dot:nth-child(1) { animation-delay: 0s; }
-.typing-dot:nth-child(2) { animation-delay: 0.2s; }
-.typing-dot:nth-child(3) { animation-delay: 0.4s; }
-
-@keyframes typingBounce {
-  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
-  30%            { transform: translateY(-5px); opacity: 1; }
 }
 
 /* ─── Message Input Bar ──────────────────────────────────────────────────── */
