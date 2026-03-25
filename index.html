@@ -90,18 +90,15 @@
         <header class="chat-header">
           <!-- Back button: visible only on mobile -->
           <button id="back-btn" aria-label="Back to contacts">‹</button>
-          <h3 id="chat-with-header">Chat</h3>
+          <div class="chat-header-presence">
+            <span id="header-presence-dot"></span>
+            <h3 id="chat-with-header">Chat</h3>
+          </div>
         </header>
 
         <div id="messages" class="messages"></div>
 
-        <div id="typing-indicator" class="typing-indicator hidden">
-          <div class="typing-bubble">
-            <span class="typing-dot"></span>
-            <span class="typing-dot"></span>
-            <span class="typing-dot"></span>
-          </div>
-        </div>
+        <div id="typing-indicator" class="typing-indicator hidden"></div>
 
         <div class="input-area">
           <input
