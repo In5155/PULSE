@@ -438,7 +438,6 @@ function listenForTyping() {
   if (!currentChatId || !currentPartnerUid) return;
   unsubscribeTyping = onSnapshot(doc(db, "chats", currentChatId, "typing", currentPartnerUid), (snap) => {
     if (snap.exists() && snap.data().isTyping && (Date.now() - snap.data().updatedAt < 4000)) {
-      typingIndicator.innerText = `${currentPartnerCode} is typing…`;
       typingIndicator.classList.remove("hidden");
     } else {
       typingIndicator.classList.add("hidden");
