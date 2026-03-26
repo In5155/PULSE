@@ -515,4 +515,26 @@ function listenForTyping() {
       typingIndicator.classList.add("hidden");
     }
   });
+
+  // --- Notification Setup ---
+
+async function requestNotificationPermission() {
+  if (!("Notification" in window)) return;
+  
+  if (Notification.permission !== "granted") {
+    await Notification.requestPermission();
+  }
+}
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/firebase-messaging-sw.js')
+    .then(() => console.log("Service Worker Active"));
+}
+
+// Helper to show a notification if the user is looking at another tab
+function sendLocalNotification(user, text) {
+  if (Notification.permission === "granted" && document.visibilityState !== "visible") {
+    new Notification(`Pulse: ${user}`, { body: text });
+  }
+}
 }
