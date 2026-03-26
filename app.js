@@ -552,3 +552,4 @@ function sendLocalNotification(user, text) {
     new Notification(`Pulse: ${user}`, { body: text });
   }
 }
+  
