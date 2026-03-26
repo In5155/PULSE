@@ -530,7 +530,7 @@ function listenForTyping() {
       typingIndicator.classList.add("hidden");
     }
   });
-
+}
   // --- Notification Setup ---
 
 async function requestNotificationPermission() {
@@ -551,5 +551,4 @@ function sendLocalNotification(user, text) {
   if (Notification.permission === "granted" && document.visibilityState !== "visible") {
     new Notification(`Pulse: ${user}`, { body: text });
   }
-}
 }
