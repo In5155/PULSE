@@ -433,10 +433,22 @@ function loadMessages() {
   const q = query(collection(db, "chats", currentChatId, "messages"), orderBy("createdAt"));
 
   unsubscribeMessages = onSnapshot(q, (snapshot) => {
+    // 1. Identify if this is a fresh update (not just loading old history)
+    const isNewUpdate = !snapshot.metadata.fromCache && snapshot.docChanges().length > 0;
+
     messagesDiv.innerHTML = "";
+    
     snapshot.forEach((docSnap) => {
       const msg = docSnap.data();
       const isSent = msg.sender === currentUser.uid;
+
+      // 2. TRIGGER NOTIFICATION: 
+      // If it's a new incoming message and the tab is hidden
+      if (isNewUpdate && !isSent && docSnap === snapshot.docs[snapshot.docs.length - 1]) {
+        sendLocalNotification(currentPartnerCode, msg.text);
+      }
+
+      // 3. RENDER BUBBLES (Your existing UI logic)
       const bubble = document.createElement("div");
       bubble.classList.add("message", isSent ? "sent" : "received");
 
@@ -454,6 +466,7 @@ function loadMessages() {
       }
       messagesDiv.appendChild(bubble);
     });
+
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
     markMessagesAsRead(currentChatId);
   });
