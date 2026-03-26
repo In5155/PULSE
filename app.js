@@ -174,13 +174,16 @@ onAuthStateChanged(auth, async (user) => {
     authScreen.classList.add("hidden");
     chatScreen.classList.remove("hidden");
 
+    // --- ADD THIS LINE HERE ---
+    requestNotificationPermission(); 
+
     const userDoc = await getDoc(doc(db, "users", user.uid));
     if (userDoc.exists()) {
       userCodeDisplay.innerText = userDoc.data().code;
     }
 
     loadContacts();
-    updatePresence(); // start broadcasting presence
+    updatePresence(); 
   } else {
     currentUser        = null;
     currentChatId      = null;
@@ -195,7 +198,6 @@ onAuthStateChanged(auth, async (user) => {
     unsubscribeTyping?.();
     unsubscribePartnerPresence?.();
 
-    // Cancel all per-contact presence listeners
     presenceListeners.forEach(unsub => unsub());
     presenceListeners.clear();
     
