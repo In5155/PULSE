@@ -486,18 +486,51 @@ button {
 }
 
 /* ─── Typing Indicator ───────────────────────────────────────────────────── */
+/* ─── Typing Indicator (iMessage Style) ──────────────────────────────────── */
 .typing-indicator {
-  padding: 6px 20px 2px;
-  font-size: 13px;
-  color: var(--text-muted);
-  font-style: italic;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 16px;
+  background: var(--bubble-received);
+  border-radius: 16px;
+  border-bottom-left-radius: 4px; /* Matches received bubble tail */
+  width: fit-content;
+  margin-left: 20px;
+  margin-bottom: 12px;
   flex-shrink: 0;
   animation: fadeIn 0.2s ease;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+.typing-indicator.hidden {
+  display: none !important;
+}
+
+.typing-indicator .dot {
+  width: 6px;
+  height: 6px;
+  background-color: var(--text-muted);
+  border-radius: 50%;
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+/* Stagger the animations so they ripple */
+.typing-indicator .dot:nth-child(1) {
+  animation-delay: -0.32s;
+}
+.typing-indicator .dot:nth-child(2) {
+  animation-delay: -0.16s;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% {
+    transform: translateY(0);
+    opacity: 0.6;
+  }
+  40% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
 }
 
 /* ─── Message Input Bar ──────────────────────────────────────────────────── */
