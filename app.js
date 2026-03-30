@@ -704,3 +704,22 @@ document.addEventListener("click", (e) => {
     reactionPicker.classList.add("hidden");
   }
 });
+
+const themeToggle = document.getElementById("theme-toggle");
+
+// Check for saved theme preference
+const savedTheme = localStorage.getItem("theme");
+if (savedTheme === "dark") {
+  document.body.classList.add("dark-theme");
+}
+
+themeToggle.onclick = () => {
+  document.body.classList.toggle("dark-theme");
+  
+  // Save the preference
+  if (document.body.classList.contains("dark-theme")) {
+    localStorage.setItem("theme", "dark");
+  } else {
+    localStorage.setItem("theme", "light");
+  }
+};
