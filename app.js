@@ -82,6 +82,11 @@ function generateUserCode() {
   return Math.random().toString(36).substring(2, 8);
 }
 
+function formatTime(timestamp) {
+  if (!timestamp) return "";
+  return new Date(timestamp).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
 function getChatId(uid1, uid2) {
   return uid1 < uid2 ? `${uid1}_${uid2}` : `${uid2}_${uid1}`;
 }
@@ -450,22 +455,47 @@ function loadMessages() {
         sendLocalNotification(currentPartnerCode, msg.text);
       }
 
-      // 3. RENDER BUBBLES (Your existing UI logic)
+      // 3. RENDER BUBBLES
       const bubble = document.createElement("div");
       bubble.classList.add("message", isSent ? "sent" : "received");
+
+      // Wrapper to stack the text bubble and the timestamps vertically
+      const bubbleContent = document.createElement("div");
+      bubbleContent.classList.add("message-content");
 
       const textSpan = document.createElement("span");
       textSpan.classList.add("message-text");
       textSpan.innerText = msg.text;
-      bubble.appendChild(textSpan);
+      bubbleContent.appendChild(textSpan);
 
+      // The info row underneath the text bubble
+      const infoDiv = document.createElement("div");
+      infoDiv.classList.add("message-info");
+
+      // Always show the sent time
+      const timeSpan = document.createElement("span");
+      timeSpan.innerText = formatTime(msg.createdAt);
+      infoDiv.appendChild(timeSpan);
+
+      // If you sent the message, add the read receipt details
       if (isSent) {
-        const isRead = msg.readBy && Object.keys(msg.readBy).some(uid => uid !== currentUser.uid);
+        const partnerReadTime = msg.readBy && msg.readBy[currentPartnerUid];
         const receipt = document.createElement("span");
-        receipt.classList.add("read-receipt", isRead ? "is-read" : "sent");
-        receipt.innerText = isRead ? "✓✓" : "✓";
-        bubble.appendChild(receipt);
+        receipt.classList.add("read-receipt");
+
+        if (partnerReadTime) {
+          receipt.classList.add("is-read");
+          receipt.innerText = ` • Read ${formatTime(partnerReadTime)}`;
+        } else {
+          receipt.classList.add("sent");
+          receipt.innerText = ` • Delivered`;
+        }
+        infoDiv.appendChild(receipt);
       }
+
+      bubbleContent.appendChild(infoDiv);
+      bubble.appendChild(bubbleContent);
+      messagesDiv.appendChild(bubble);
       messagesDiv.appendChild(bubble);
     });
 
