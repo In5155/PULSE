@@ -506,13 +506,23 @@ function loadMessages() {
   });
 }
 async function markMessagesAsRead(chatId) {
-  if (!isActivelyOnTab()) return;
-  const q = query(collection(db, "chats", chatId, "messages"));
+  // Only proceed if the user is actually looking at the tab
+  if (!isActivelyOnTab() || !currentUser) return;
+
+  // Only query messages where 'sender' is NOT the current user
+  const q = query(
+    collection(db, "chats", chatId, "messages"),
+    where("sender", "!=", currentUser.uid)
+  );
+
   const snap = await getDocs(q);
   snap.forEach((docSnap) => {
     const msg = docSnap.data();
-    if (msg.sender !== currentUser.uid && !msg.readBy?.[currentUser.uid]) {
-      updateDoc(docSnap.ref, { [`readBy.${currentUser.uid}`]: Date.now() });
+    // If my UID isn't in the readBy object, update it
+    if (!msg.readBy?.[currentUser.uid]) {
+      updateDoc(docSnap.ref, { 
+        [`readBy.${currentUser.uid}`]: Date.now() 
+      });
     }
   });
 }
