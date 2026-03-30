@@ -443,8 +443,9 @@ function loadMessages() {
   const q = query(collection(db, "chats", currentChatId, "messages"), orderBy("createdAt"));
 
   unsubscribeMessages = onSnapshot(q, (snapshot) => {
-    // 1. Identify if this is a fresh update (not just loading old history)
-    const isNewUpdate = !snapshot.metadata.fromCache && snapshot.docChanges().length > 0;
+    // 1. Check for changes
+    const hasChanges = snapshot.docChanges().length > 0;
+    const isLocalUpdate = snapshot.metadata.hasPendingWrites;
 
     messagesDiv.innerHTML = "";
     
@@ -453,8 +454,8 @@ function loadMessages() {
       const isSent = msg.sender === currentUser.uid;
 
       // 2. TRIGGER NOTIFICATION: 
-      // If it's a new incoming message and the tab is hidden
-      if (isNewUpdate && !isSent && docSnap === snapshot.docs[snapshot.docs.length - 1]) {
+      // Only notify for the very last message if it's new and from the partner
+      if (hasChanges && !isLocalUpdate && !isSent && docSnap.id === snapshot.docs[snapshot.docs.length - 1].id) {
         sendLocalNotification(currentPartnerCode, msg.text);
       }
 
@@ -462,7 +463,6 @@ function loadMessages() {
       const bubble = document.createElement("div");
       bubble.classList.add("message", isSent ? "sent" : "received");
 
-      // Wrapper to stack the text bubble and the timestamps vertically
       const bubbleContent = document.createElement("div");
       bubbleContent.classList.add("message-content");
 
@@ -471,16 +471,13 @@ function loadMessages() {
       textSpan.innerText = msg.text;
       bubbleContent.appendChild(textSpan);
 
-      // The info row underneath the text bubble
       const infoDiv = document.createElement("div");
       infoDiv.classList.add("message-info");
 
-      // Always show the sent time
       const timeSpan = document.createElement("span");
       timeSpan.innerText = formatTime(msg.createdAt);
       infoDiv.appendChild(timeSpan);
 
-      // If you sent the message, add the read receipt details
       if (isSent) {
         const partnerReadTime = msg.readBy && msg.readBy[currentPartnerUid];
         const receipt = document.createElement("span");
@@ -499,14 +496,15 @@ function loadMessages() {
       bubbleContent.appendChild(infoDiv);
       bubble.appendChild(bubbleContent);
       messagesDiv.appendChild(bubble);
-      messagesDiv.appendChild(bubble);
     });
 
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+    // --- CRITICAL FIX ---
+    // Every time the snapshot updates, check if we need to mark new messages as read
     markMessagesAsRead(currentChatId);
   });
 }
-
 async function markMessagesAsRead(chatId) {
   if (!isActivelyOnTab()) return;
   const q = query(collection(db, "chats", chatId, "messages"));
