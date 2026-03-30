@@ -1,8 +1,7 @@
 /* ================= styles.css ================= */
 
-//* ─── Design Tokens ─────────────────────────────────────────────────────── */
+/* ─── Design Tokens ─────────────────────────────────────────────────────── */
 :root {
-  /* Light Mode (Default) */
   --primary:          #4f46e5;
   --primary-hover:    #4338ca;
   --bg-color:         #f3f4f6;
@@ -17,17 +16,6 @@
   --receipt-read:     #a5f3fc;
 }
 
-/* Dark Mode Overrides */
-body.dark-theme {
-  --bg-color:         #0f172a; /* Deep Navy */
-  --surface:          #1e293b; /* Lighter Slate */
-  --text-main:        #f1f5f9;
-  --text-muted:       #94a3b8;
-  --border:           #334155;
-  --bubble-sent:      #6366f1;
-  --bubble-received:  #334155;
-  --receipt-read:     #7dd3fc;
-}
 
 /* ─── Reset / Base ──────────────────────────────────────────────────────── */
 *, *::before, *::after {
