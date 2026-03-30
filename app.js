@@ -78,6 +78,7 @@ let unsubscribeTyping   = null;
 let unsubscribePartnerPresence = null;
 
 let replyingTo = null; // Tracks the message being replied to
+let editingMessageId = null; // Tracks the message being edited
 
 const presenceListeners = new Map();
 let typingTimeout = null;
@@ -518,6 +519,14 @@ function loadMessages() {
 
       const infoDiv = document.createElement("div");
       infoDiv.classList.add("message-info");
+
+      if (msg.edited) {
+        const editedSpan = document.createElement("span");
+        editedSpan.classList.add("edited-indicator");
+        editedSpan.innerText = "edited";
+        infoDiv.appendChild(editedSpan);
+      }
+
       const timeSpan = document.createElement("span");
       timeSpan.innerText = formatTime(msg.createdAt);
       infoDiv.appendChild(timeSpan);
@@ -562,6 +571,15 @@ sendBtn.onclick = async () => {
   const text = messageInput.value.trim();
   messageInput.value = "";
 
+  // ── Edit mode: update existing message ─────────────────────────────────
+  if (editingMessageId) {
+    const msgRef = doc(db, "chats", currentChatId, "messages", editingMessageId);
+    await updateDoc(msgRef, { text, edited: true });
+    cancelReply();
+    return;
+  }
+
+  // ── Normal send ─────────────────────────────────────────────────────────
   const messageData = {
     text,
     sender: currentUser.uid,
@@ -596,10 +614,37 @@ function setupReply(text, senderCode) {
 
 function cancelReply() {
   replyingTo = null;
+  editingMessageId = null;
+  replyBar.classList.remove("is-editing");
   replyBar.classList.add("hidden");
+  messageInput.value = "";
 }
 
 cancelReplyBtn.onclick = cancelReply;
+
+// ─── Edit & Delete Logic ──────────────────────────────────────────────────────
+
+function startEditMessage(msgId, currentText) {
+  replyingTo = null; // Clear any active reply
+  editingMessageId = msgId;
+  replyLabel.innerText = "Editing message";
+  replyText.innerText = currentText;
+  replyBar.classList.remove("hidden");
+  replyBar.classList.add("is-editing");
+  messageInput.value = currentText;
+  messageInput.focus();
+  messageInput.select();
+}
+
+async function deleteMessage(msgId) {
+  if (!currentChatId) return;
+  if (!confirm("Delete this message?")) return;
+  try {
+    await deleteDoc(doc(db, "chats", currentChatId, "messages", msgId));
+  } catch (err) {
+    console.error("Delete failed:", err);
+  }
+}
 
 // ─── Typing Logic ─────────────────────────────────────────────────────────────
 
@@ -649,29 +694,60 @@ function sendLocalNotification(user, text) {
 }
 
 let reactionTargetId = null;
+let reactionTargetIsSent = false;
 const reactionPicker = document.getElementById("reaction-picker");
+const msgActions = document.getElementById("msg-actions");
+const editMsgBtn = document.getElementById("edit-msg-btn");
+const deleteMsgBtn = document.getElementById("delete-msg-btn");
 
 // 1. Show picker on Context Menu (Right Click) or Long Press
 document.addEventListener("contextmenu", (e) => {
   const bubble = e.target.closest(".message");
   if (bubble) {
-    e.preventDefault(); // Prevent default browser menu
-    
-    // Find the actual message ID from the UI (we'll need to store it on the bubble)
-    // For now, let's attach the ID to the bubble element during rendering
-    const msgId = bubble.dataset.id; 
-    showReactionPicker(msgId, e.clientX, e.clientY);
+    e.preventDefault();
+    const msgId = bubble.dataset.id;
+    const isSent = bubble.classList.contains("sent");
+    showReactionPicker(msgId, isSent, e.clientX, e.clientY);
   } else {
     reactionPicker.classList.add("hidden");
   }
 });
 
-function showReactionPicker(msgId, x, y) {
+function showReactionPicker(msgId, isSent, x, y) {
   reactionTargetId = msgId;
-  reactionPicker.style.left = `${Math.min(x, window.innerWidth - 180)}px`;
-  reactionPicker.style.top = `${y - 60}px`;
+  reactionTargetIsSent = isSent;
+
+  // Show edit/delete only for own messages
+  if (isSent) {
+    msgActions.classList.remove("hidden");
+  } else {
+    msgActions.classList.add("hidden");
+  }
+
+  // Position: keep it on screen
+  const menuWidth = 190;
+  const menuHeight = isSent ? 160 : 70;
+  reactionPicker.style.left = `${Math.min(x, window.innerWidth - menuWidth)}px`;
+  reactionPicker.style.top  = `${Math.max(10, y - menuHeight)}px`;
   reactionPicker.classList.remove("hidden");
 }
+
+// Edit button
+editMsgBtn.onclick = () => {
+  if (!reactionTargetId || !currentChatId) return;
+  reactionPicker.classList.add("hidden");
+  // Find the text from the rendered bubble
+  const bubble = document.querySelector(`.message[data-id="${reactionTargetId}"]`);
+  const text = bubble?.querySelector(".message-text")?.innerText || "";
+  startEditMessage(reactionTargetId, text);
+};
+
+// Delete button
+deleteMsgBtn.onclick = () => {
+  if (!reactionTargetId) return;
+  reactionPicker.classList.add("hidden");
+  deleteMessage(reactionTargetId);
+};
 
 // 2. Handle Emoji Click
 document.querySelectorAll(".reaction-btn").forEach(btn => {
