@@ -448,9 +448,10 @@ function loadMessages() {
         sendLocalNotification(currentPartnerCode, msg.text);
       }
 
-      // RENDER BUBBLES
+      // 1. Create the bubble and attach the ID for reactions
       const bubble = document.createElement("div");
       bubble.classList.add("message", isSent ? "sent" : "received");
+      bubble.dataset.id = docSnap.id; // CRITICAL for reactions to work
 
       // Double click to reply
       bubble.ondblclick = () => {
@@ -460,7 +461,7 @@ function loadMessages() {
       const bubbleContent = document.createElement("div");
       bubbleContent.classList.add("message-content");
 
-      // Render Reply Quote if present
+      // 2. Render Reply Quote
       if (msg.replyTo) {
         const replyQuote = document.createElement("div");
         replyQuote.classList.add("reply-quote");
@@ -468,11 +469,37 @@ function loadMessages() {
         bubbleContent.appendChild(replyQuote);
       }
 
+      // 3. Render Message Text
       const textSpan = document.createElement("span");
       textSpan.classList.add("message-text");
       textSpan.innerText = msg.text;
       bubbleContent.appendChild(textSpan);
 
+      // 4. NEW: Render Reactions (Moved inside the loop)
+      if (msg.reactions) {
+        const reactionsDiv = document.createElement("div");
+        reactionsDiv.classList.add("message-reactions");
+        
+        Object.entries(msg.reactions).forEach(([emoji, uids]) => {
+          if (uids.length === 0) return;
+          
+          const badge = document.createElement("div");
+          badge.classList.add("reaction-badge");
+          if (uids.includes(currentUser.uid)) badge.classList.add("my-reaction");
+          
+          badge.innerHTML = `<span>${emoji}</span> <small>${uids.length}</small>`;
+          // Clicking the badge directly also toggles the reaction
+          badge.onclick = (e) => {
+             e.stopPropagation(); // Don't trigger the bubble's click
+             toggleReaction(docSnap.id, emoji, msg.reactions);
+          };
+          
+          reactionsDiv.appendChild(badge);
+        });
+        bubbleContent.appendChild(reactionsDiv);
+      }
+
+      // 5. Render Info (Time/Read Receipts)
       const infoDiv = document.createElement("div");
       infoDiv.classList.add("message-info");
 
@@ -611,3 +638,69 @@ function sendLocalNotification(user, text) {
     new Notification(`Pulse: ${user}`, { body: text });
   }
 }
+
+let reactionTargetId = null;
+const reactionPicker = document.getElementById("reaction-picker");
+
+// 1. Show picker on Context Menu (Right Click) or Long Press
+document.addEventListener("contextmenu", (e) => {
+  const bubble = e.target.closest(".message");
+  if (bubble) {
+    e.preventDefault(); // Prevent default browser menu
+    
+    // Find the actual message ID from the UI (we'll need to store it on the bubble)
+    // For now, let's attach the ID to the bubble element during rendering
+    const msgId = bubble.dataset.id; 
+    showReactionPicker(msgId, e.clientX, e.clientY);
+  } else {
+    reactionPicker.classList.add("hidden");
+  }
+});
+
+function showReactionPicker(msgId, x, y) {
+  reactionTargetId = msgId;
+  reactionPicker.style.left = `${Math.min(x, window.innerWidth - 180)}px`;
+  reactionPicker.style.top = `${y - 60}px`;
+  reactionPicker.classList.remove("hidden");
+}
+
+// 2. Handle Emoji Click
+document.querySelectorAll(".reaction-btn").forEach(btn => {
+  btn.onclick = async () => {
+    const emoji = btn.getAttribute("data-emoji");
+    if (!reactionTargetId || !currentChatId) return;
+
+    // Get the current document to see existing reactions
+    const msgRef = doc(db, "chats", currentChatId, "messages", reactionTargetId);
+    const msgSnap = await getDoc(msgRef);
+    const currentReactions = msgSnap.data().reactions || {};
+
+    toggleReaction(reactionTargetId, emoji, currentReactions);
+    reactionPicker.classList.add("hidden");
+  };
+});
+
+// 3. Toggle Logic (Add if not there, Remove if is)
+async function toggleReaction(msgId, emoji, currentReactions) {
+  const msgRef = doc(db, "chats", currentChatId, "messages", msgId);
+  let uids = currentReactions[emoji] || [];
+
+  if (uids.includes(currentUser.uid)) {
+    // Remove reaction
+    uids = uids.filter(id => id !== currentUser.uid);
+  } else {
+    // Add reaction
+    uids.push(currentUser.uid);
+  }
+
+  await updateDoc(msgRef, {
+    [`reactions.${emoji}`]: uids
+  });
+}
+
+// Close picker when clicking away
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".reaction-picker")) {
+    reactionPicker.classList.add("hidden");
+  }
+});
