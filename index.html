@@ -9,12 +9,19 @@
 </head>
 <body>
 <div id="reaction-picker" class="reaction-picker hidden">
-  <button class="reaction-btn" data-emoji="❤️">❤️</button>
-  <button class="reaction-btn" data-emoji="👍">👍</button>
-  <button class="reaction-btn" data-emoji="😂">😂</button>
-  <button class="reaction-btn" data-emoji="😮">😮</button>
-  <button class="reaction-btn" data-emoji="😢">😢</button>
-  <button class="reaction-btn" data-emoji="🔥">🔥</button>
+  <div class="reaction-buttons">
+    <button class="reaction-btn" data-emoji="❤️">❤️</button>
+    <button class="reaction-btn" data-emoji="👍">👍</button>
+    <button class="reaction-btn" data-emoji="😂">😂</button>
+    <button class="reaction-btn" data-emoji="😮">😮</button>
+    <button class="reaction-btn" data-emoji="😢">😢</button>
+    <button class="reaction-btn" data-emoji="🔥">🔥</button>
+  </div>
+  <div id="msg-actions" class="msg-actions hidden">
+    <div class="msg-actions-divider"></div>
+    <button id="edit-msg-btn" class="msg-action-btn edit-btn">✏️ Edit</button>
+    <button id="delete-msg-btn" class="msg-action-btn delete-btn">🗑️ Delete</button>
+  </div>
 </div>
   <!-- ═══════════════════════════════════════════════ Auth Screen -->
   <div id="auth-screen" class="screen">
