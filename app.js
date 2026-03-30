@@ -305,18 +305,22 @@ function loadContacts() {
   _inboxMap    = new Map();
 
   // ── Listener 1: manually added contacts ──────────────────────────────────
+  // No orderBy — avoids Firestore index errors on the subcollection
   unsubscribeContacts = onSnapshot(
-    query(collection(db, "users", currentUser.uid, "contacts"), orderBy("addedAt", "asc")),
+    collection(db, "users", currentUser.uid, "contacts"),
     async (snap) => {
       _contactsMap = new Map();
       const fetches = snap.docs.map(async (docSnap) => {
         const { uid } = docSnap.data();
-        const userRef = await getDoc(doc(db, "users", uid));
-        _contactsMap.set(uid, userRef.exists() ? userRef.data().code : "Unknown");
+        try {
+          const userRef = await getDoc(doc(db, "users", uid));
+          _contactsMap.set(uid, userRef.exists() ? userRef.data().code : "Unknown");
+        } catch (e) { console.error("Contact fetch error:", e); }
       });
       await Promise.all(fetches);
       renderContactsList(_contactsMap, _inboxMap);
-    }
+    },
+    (err) => console.error("Contacts listener error:", err)
   );
 
   // ── Listener 2: inbox (people who texted you) ─────────────────────────────
@@ -327,13 +331,16 @@ function loadContacts() {
       const fetches = snap.docs.map(async (inboxDoc) => {
         const senderUid = inboxDoc.id;
         if (!_contactsMap.has(senderUid)) {
-          const userRef = await getDoc(doc(db, "users", senderUid));
-          _inboxMap.set(senderUid, userRef.exists() ? userRef.data().code : senderUid);
+          try {
+            const userRef = await getDoc(doc(db, "users", senderUid));
+            _inboxMap.set(senderUid, userRef.exists() ? userRef.data().code : senderUid);
+          } catch (e) { console.error("Inbox fetch error:", e); }
         }
       });
       await Promise.all(fetches);
       renderContactsList(_contactsMap, _inboxMap);
-    }
+    },
+    (err) => console.error("Inbox listener error:", err)
   );
 }
 
