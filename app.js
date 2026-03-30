@@ -109,6 +109,9 @@ function writePresence(online) {
 
 function updatePresence() {
   writePresence(isActivelyOnTab());
+  if (isActivelyOnTab() && currentChatId) {
+    markMessagesAsRead(currentChatId);
+  }
 }
 
 document.addEventListener("visibilitychange", updatePresence);
@@ -505,6 +508,7 @@ function loadMessages() {
 }
 
 async function markMessagesAsRead(chatId) {
+  if (!isActivelyOnTab()) return;
   const q = query(collection(db, "chats", chatId, "messages"));
   const snap = await getDocs(q);
   snap.forEach((docSnap) => {
