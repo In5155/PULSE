@@ -661,3 +661,33 @@ button {
   letter-spacing: 0.04em;
   flex-shrink: 0;
 }
+
+/* The quote inside the message bubble */
+.reply-quote {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 6px 10px;
+  border-left: 3px solid var(--primary);
+  border-radius: 4px;
+  margin-bottom: 6px;
+  font-size: 0.85rem;
+}
+.reply-quote small { font-weight: bold; display: block; }
+.reply-quote p { margin: 0; opacity: 0.8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* The bar above the input field */
+.reply-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--surface);
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
+  animation: slideUp 0.2s ease;
+}
+.reply-bar-content p { margin: 0; font-size: 0.9rem; color: var(--text-muted); }
+#cancel-reply-btn { background: none; border: none; font-size: 1.2rem; cursor: pointer; }
+
+@keyframes slideUp {
+  from { transform: translateY(10px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
