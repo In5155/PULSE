@@ -54,10 +54,16 @@ const noChatSelected   = document.getElementById("no-chat-selected");
 const activeChatWindow = document.getElementById("active-chat-window");
 const chatWithHeader   = document.getElementById("chat-with-header");
 const messagesDiv      = document.getElementById("messages");
-const messageInput     = document.getElementById("message-input");
+const messageInput      = document.getElementById("message-input");
 const sendBtn          = document.getElementById("send-btn");
 const typingIndicator  = document.getElementById("typing-indicator");
 const headerPresenceDot = document.getElementById("header-presence-dot");
+
+// UI References for Replying
+const replyBar      = document.getElementById("reply-bar");
+const replyLabel    = document.getElementById("reply-label");
+const replyText     = document.getElementById("reply-text");
+const cancelReplyBtn = document.getElementById("cancel-reply-btn");
 
 // ─── App State ───────────────────────────────────────────────────────────────
 let currentUser        = null;
@@ -71,9 +77,9 @@ let unsubscribeInbox    = null;
 let unsubscribeTyping   = null;
 let unsubscribePartnerPresence = null;
 
-// Per-contact presence listeners: uid → unsubscribe fn
-const presenceListeners = new Map();
+let replyingTo = null; // Tracks the message being replied to
 
+const presenceListeners = new Map();
 let typingTimeout = null;
 const TYPING_TIMEOUT_MS = 2500;
 
@@ -95,9 +101,7 @@ function clearError(el) {
   el.innerText = "";
 }
 
-// ─── Presence ─────────────────────────────────────────────────────────────────
-// "Online" = tab is visible AND focused (actually on the tab, not just open)
-
+// ─── Presence & Tab Management ────────────────────────────────────────────────
 function isActivelyOnTab() {
   return document.visibilityState === "visible" && document.hasFocus();
 }
@@ -109,6 +113,7 @@ function writePresence(online) {
 
 function updatePresence() {
   writePresence(isActivelyOnTab());
+  // If user returns to tab, mark pending messages as read
   if (isActivelyOnTab() && currentChatId) {
     markMessagesAsRead(currentChatId);
   }
@@ -117,8 +122,6 @@ function updatePresence() {
 document.addEventListener("visibilitychange", updatePresence);
 window.addEventListener("focus", updatePresence);
 window.addEventListener("blur", updatePresence);
-
-// Best-effort: mark offline if the tab/window closes
 window.addEventListener("beforeunload", () => writePresence(false));
 
 // ─── Mobile Navigation ───────────────────────────────────────────────────────
@@ -182,7 +185,6 @@ onAuthStateChanged(auth, async (user) => {
     authScreen.classList.add("hidden");
     chatScreen.classList.remove("hidden");
 
-    // --- ADD THIS LINE HERE ---
     requestNotificationPermission(); 
 
     const userDoc = await getDoc(doc(db, "users", user.uid));
@@ -292,8 +294,6 @@ addContactBtn.onclick = async () => {
   }
 };
 
-// ─── Real-time Contact Loading ──────────────────────────────────────────────
-
 function loadContacts() {
   unsubscribeContacts?.();
   unsubscribeInbox?.();
@@ -301,7 +301,6 @@ function loadContacts() {
   const contactsRef = collection(db, "users", currentUser.uid, "contacts");
   const inboxRef = collection(db, "users", currentUser.uid, "inbox");
 
-  // Listen to manual contacts
   unsubscribeContacts = onSnapshot(query(contactsRef, orderBy("addedAt", "asc")), async (contactsSnap) => {
     const manualContacts = new Map();
     for (const docSnap of contactsSnap.docs) {
@@ -310,7 +309,6 @@ function loadContacts() {
       manualContacts.set(uid, userRef.exists() ? userRef.data().code : "Unknown");
     }
 
-    // Listen to Inbox (iMessage-style)
     unsubscribeInbox = onSnapshot(inboxRef, async (inboxSnap) => {
       const inboxUids = new Map();
       for (const inboxDoc of inboxSnap.docs) {
@@ -336,7 +334,6 @@ function renderContactItem(uid, code, isInboxOnly) {
   item.classList.add("contact-item");
   if (isInboxOnly) item.classList.add("inbox-only");
 
-  // Left side: presence dot + name
   const nameRow = document.createElement("div");
   nameRow.classList.add("contact-name-row");
 
@@ -350,8 +347,7 @@ function renderContactItem(uid, code, isInboxOnly) {
 
   item.appendChild(nameRow);
 
-  // Subscribe to this contact's presence and update the dot live
-  presenceListeners.get(uid)?.(); // cancel any previous listener for this uid
+  presenceListeners.get(uid)?.(); 
   const unsub = onSnapshot(doc(db, "users", uid), (snap) => {
     if (snap.exists() && snap.data().online === true) {
       dot.classList.add("online");
@@ -363,7 +359,6 @@ function renderContactItem(uid, code, isInboxOnly) {
   });
   presenceListeners.set(uid, unsub);
 
-  // Delete button
   const delBtn = document.createElement("button");
   delBtn.innerText = "✕";
   delBtn.classList.add("delete-contact-btn");
@@ -388,7 +383,6 @@ async function deleteContact(contactUid, event) {
   if (!confirm("Remove this contact and clear conversation?")) return;
 
   try {
-    // Delete from Inbox AND Contacts
     await deleteDoc(doc(db, "users", currentUser.uid, "inbox", contactUid));
     await deleteDoc(doc(db, "users", currentUser.uid, "contacts", contactUid));
 
@@ -416,22 +410,20 @@ function selectContact(partnerUid, partnerCode, itemEl) {
   activeChatWindow.classList.remove("hidden");
   chatWithHeader.innerText = partnerCode;
   
-  // Live presence dot in the chat header
   unsubscribePartnerPresence?.();
-  headerPresenceDot.className = ""; // reset
+  headerPresenceDot.className = ""; 
   unsubscribePartnerPresence = onSnapshot(doc(db, "users", partnerUid), (snap) => {
     if (snap.exists() && snap.data().online === true) {
       headerPresenceDot.classList.add("online");
-      headerPresenceDot.title = `${partnerCode} is online`;
     } else {
       headerPresenceDot.classList.remove("online");
-      headerPresenceDot.title = `${partnerCode} is offline`;
     }
   });
 
   openChatView();
   loadMessages();
   listenForTyping();
+  cancelReply(); // Reset reply state when switching chats
 }
 
 // ─── Messaging ───────────────────────────────────────────────────────────────
@@ -443,7 +435,6 @@ function loadMessages() {
   const q = query(collection(db, "chats", currentChatId, "messages"), orderBy("createdAt"));
 
   unsubscribeMessages = onSnapshot(q, (snapshot) => {
-    // 1. Check for changes
     const hasChanges = snapshot.docChanges().length > 0;
     const isLocalUpdate = snapshot.metadata.hasPendingWrites;
 
@@ -453,18 +444,29 @@ function loadMessages() {
       const msg = docSnap.data();
       const isSent = msg.sender === currentUser.uid;
 
-      // 2. TRIGGER NOTIFICATION: 
-      // Only notify for the very last message if it's new and from the partner
       if (hasChanges && !isLocalUpdate && !isSent && docSnap.id === snapshot.docs[snapshot.docs.length - 1].id) {
         sendLocalNotification(currentPartnerCode, msg.text);
       }
 
-      // 3. RENDER BUBBLES
+      // RENDER BUBBLES
       const bubble = document.createElement("div");
       bubble.classList.add("message", isSent ? "sent" : "received");
 
+      // Double click to reply
+      bubble.ondblclick = () => {
+        setupReply(msg.text, isSent ? "You" : currentPartnerCode);
+      };
+
       const bubbleContent = document.createElement("div");
       bubbleContent.classList.add("message-content");
+
+      // Render Reply Quote if present
+      if (msg.replyTo) {
+        const replyQuote = document.createElement("div");
+        replyQuote.classList.add("reply-quote");
+        replyQuote.innerHTML = `<small>${msg.replyTo.senderCode}</small><p>${msg.replyTo.text}</p>`;
+        bubbleContent.appendChild(replyQuote);
+      }
 
       const textSpan = document.createElement("span");
       textSpan.classList.add("message-text");
@@ -487,7 +489,6 @@ function loadMessages() {
           receipt.classList.add("is-read");
           receipt.innerText = ` • Read ${formatTime(partnerReadTime)}`;
         } else {
-          receipt.classList.add("sent");
           receipt.innerText = ` • Delivered`;
         }
         infoDiv.appendChild(receipt);
@@ -499,17 +500,13 @@ function loadMessages() {
     });
 
     messagesDiv.scrollTop = messagesDiv.scrollHeight;
-
-    // --- CRITICAL FIX ---
-    // Every time the snapshot updates, check if we need to mark new messages as read
     markMessagesAsRead(currentChatId);
   });
 }
+
 async function markMessagesAsRead(chatId) {
-  // Only proceed if the user is actually looking at the tab
   if (!isActivelyOnTab() || !currentUser) return;
 
-  // Only query messages where 'sender' is NOT the current user
   const q = query(
     collection(db, "chats", chatId, "messages"),
     where("sender", "!=", currentUser.uid)
@@ -518,11 +515,8 @@ async function markMessagesAsRead(chatId) {
   const snap = await getDocs(q);
   snap.forEach((docSnap) => {
     const msg = docSnap.data();
-    // If my UID isn't in the readBy object, update it
     if (!msg.readBy?.[currentUser.uid]) {
-      updateDoc(docSnap.ref, { 
-        [`readBy.${currentUser.uid}`]: Date.now() 
-      });
+      updateDoc(docSnap.ref, { [`readBy.${currentUser.uid}`]: Date.now() });
     }
   });
 }
@@ -532,12 +526,19 @@ sendBtn.onclick = async () => {
   const text = messageInput.value.trim();
   messageInput.value = "";
 
-  await addDoc(collection(db, "chats", currentChatId, "messages"), {
+  const messageData = {
     text,
     sender: currentUser.uid,
     createdAt: Date.now(),
     readBy: {}
-  });
+  };
+
+  if (replyingTo) {
+    messageData.replyTo = replyingTo;
+    cancelReply();
+  }
+
+  await addDoc(collection(db, "chats", currentChatId, "messages"), messageData);
 
   await setDoc(doc(db, "users", currentPartnerUid, "inbox", currentUser.uid), {
     lastMessageAt: Date.now(),
@@ -546,6 +547,23 @@ sendBtn.onclick = async () => {
 };
 
 messageInput.onkeypress = (e) => { if (e.key === "Enter") sendBtn.click(); };
+
+// ─── Reply Logic ─────────────────────────────────────────────────────────────
+
+function setupReply(text, senderCode) {
+  replyingTo = { text, senderCode };
+  replyLabel.innerText = `Replying to ${senderCode}`;
+  replyText.innerText = text;
+  replyBar.classList.remove("hidden");
+  messageInput.focus();
+}
+
+function cancelReply() {
+  replyingTo = null;
+  replyBar.classList.add("hidden");
+}
+
+cancelReplyBtn.onclick = cancelReply;
 
 // ─── Typing Logic ─────────────────────────────────────────────────────────────
 
@@ -573,11 +591,11 @@ function listenForTyping() {
     }
   });
 }
-  // --- Notification Setup ---
+
+// ─── Notification Setup ───────────────────────────────────────────────────────
 
 async function requestNotificationPermission() {
   if (!("Notification" in window)) return;
-  
   if (Notification.permission !== "granted") {
     await Notification.requestPermission();
   }
@@ -588,10 +606,8 @@ if ('serviceWorker' in navigator) {
     .then(() => console.log("Service Worker Active"));
 }
 
-// Helper to show a notification if the user is looking at another tab
 function sendLocalNotification(user, text) {
   if (Notification.permission === "granted" && document.visibilityState !== "visible") {
     new Notification(`Pulse: ${user}`, { body: text });
   }
 }
-  
