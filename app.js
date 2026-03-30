@@ -294,33 +294,47 @@ addContactBtn.onclick = async () => {
   }
 };
 
+// Shared state for both listeners so either can trigger a re-render
+let _contactsMap = new Map(); // uid → code  (manually added)
+let _inboxMap    = new Map(); // uid → code  (messaged you, not yet added)
+
 function loadContacts() {
   unsubscribeContacts?.();
   unsubscribeInbox?.();
+  _contactsMap = new Map();
+  _inboxMap    = new Map();
 
-  const contactsRef = collection(db, "users", currentUser.uid, "contacts");
-  const inboxRef = collection(db, "users", currentUser.uid, "inbox");
-
-  unsubscribeContacts = onSnapshot(query(contactsRef, orderBy("addedAt", "asc")), async (contactsSnap) => {
-    const manualContacts = new Map();
-    for (const docSnap of contactsSnap.docs) {
-      const { uid } = docSnap.data();
-      const userRef = await getDoc(doc(db, "users", uid));
-      manualContacts.set(uid, userRef.exists() ? userRef.data().code : "Unknown");
+  // ── Listener 1: manually added contacts ──────────────────────────────────
+  unsubscribeContacts = onSnapshot(
+    query(collection(db, "users", currentUser.uid, "contacts"), orderBy("addedAt", "asc")),
+    async (snap) => {
+      _contactsMap = new Map();
+      const fetches = snap.docs.map(async (docSnap) => {
+        const { uid } = docSnap.data();
+        const userRef = await getDoc(doc(db, "users", uid));
+        _contactsMap.set(uid, userRef.exists() ? userRef.data().code : "Unknown");
+      });
+      await Promise.all(fetches);
+      renderContactsList(_contactsMap, _inboxMap);
     }
+  );
 
-    unsubscribeInbox = onSnapshot(inboxRef, async (inboxSnap) => {
-      const inboxUids = new Map();
-      for (const inboxDoc of inboxSnap.docs) {
+  // ── Listener 2: inbox (people who texted you) ─────────────────────────────
+  unsubscribeInbox = onSnapshot(
+    collection(db, "users", currentUser.uid, "inbox"),
+    async (snap) => {
+      _inboxMap = new Map();
+      const fetches = snap.docs.map(async (inboxDoc) => {
         const senderUid = inboxDoc.id;
-        if (!manualContacts.has(senderUid)) {
+        if (!_contactsMap.has(senderUid)) {
           const userRef = await getDoc(doc(db, "users", senderUid));
-          inboxUids.set(senderUid, userRef.exists() ? userRef.data().code : senderUid);
+          _inboxMap.set(senderUid, userRef.exists() ? userRef.data().code : senderUid);
         }
-      }
-      renderContactsList(manualContacts, inboxUids);
-    });
-  });
+      });
+      await Promise.all(fetches);
+      renderContactsList(_contactsMap, _inboxMap);
+    }
+  );
 }
 
 function renderContactsList(manualContacts, inboxUids) {
