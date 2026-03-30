@@ -448,12 +448,11 @@ function loadMessages() {
         sendLocalNotification(currentPartnerCode, msg.text);
       }
 
-      // 1. Create the bubble and attach the ID for reactions
+      // 1. Create bubble and link the ID for reactions
       const bubble = document.createElement("div");
       bubble.classList.add("message", isSent ? "sent" : "received");
-      bubble.dataset.id = docSnap.id; // CRITICAL for reactions to work
+      bubble.dataset.id = docSnap.id; 
 
-      // Double click to reply
       bubble.ondblclick = () => {
         setupReply(msg.text, isSent ? "You" : currentPartnerCode);
       };
@@ -461,7 +460,6 @@ function loadMessages() {
       const bubbleContent = document.createElement("div");
       bubbleContent.classList.add("message-content");
 
-      // 2. Render Reply Quote
       if (msg.replyTo) {
         const replyQuote = document.createElement("div");
         replyQuote.classList.add("reply-quote");
@@ -469,29 +467,27 @@ function loadMessages() {
         bubbleContent.appendChild(replyQuote);
       }
 
-      // 3. Render Message Text
       const textSpan = document.createElement("span");
       textSpan.classList.add("message-text");
       textSpan.innerText = msg.text;
       bubbleContent.appendChild(textSpan);
 
-      // 4. NEW: Render Reactions (Moved inside the loop)
+      // --- REACTIONS (NOW INSIDE THE LOOP) ---
       if (msg.reactions) {
         const reactionsDiv = document.createElement("div");
         reactionsDiv.classList.add("message-reactions");
         
         Object.entries(msg.reactions).forEach(([emoji, uids]) => {
-          if (uids.length === 0) return;
+          if (!uids || uids.length === 0) return;
           
           const badge = document.createElement("div");
           badge.classList.add("reaction-badge");
           if (uids.includes(currentUser.uid)) badge.classList.add("my-reaction");
           
           badge.innerHTML = `<span>${emoji}</span> <small>${uids.length}</small>`;
-          // Clicking the badge directly also toggles the reaction
           badge.onclick = (e) => {
-             e.stopPropagation(); // Don't trigger the bubble's click
-             toggleReaction(docSnap.id, emoji, msg.reactions);
+            e.stopPropagation(); 
+            toggleReaction(docSnap.id, emoji, msg.reactions);
           };
           
           reactionsDiv.appendChild(badge);
@@ -499,10 +495,8 @@ function loadMessages() {
         bubbleContent.appendChild(reactionsDiv);
       }
 
-      // 5. Render Info (Time/Read Receipts)
       const infoDiv = document.createElement("div");
       infoDiv.classList.add("message-info");
-
       const timeSpan = document.createElement("span");
       timeSpan.innerText = formatTime(msg.createdAt);
       infoDiv.appendChild(timeSpan);
@@ -511,13 +505,8 @@ function loadMessages() {
         const partnerReadTime = msg.readBy && msg.readBy[currentPartnerUid];
         const receipt = document.createElement("span");
         receipt.classList.add("read-receipt");
-
-        if (partnerReadTime) {
-          receipt.classList.add("is-read");
-          receipt.innerText = ` • Read ${formatTime(partnerReadTime)}`;
-        } else {
-          receipt.innerText = ` • Delivered`;
-        }
+        receipt.innerText = partnerReadTime ? ` • Read ${formatTime(partnerReadTime)}` : ` • Delivered`;
+        if (partnerReadTime) receipt.classList.add("is-read");
         infoDiv.appendChild(receipt);
       }
 
@@ -530,7 +519,6 @@ function loadMessages() {
     markMessagesAsRead(currentChatId);
   });
 }
-
 async function markMessagesAsRead(chatId) {
   if (!isActivelyOnTab() || !currentUser) return;
 
