@@ -704,6 +704,3 @@ document.addEventListener("click", (e) => {
     reactionPicker.classList.add("hidden");
   }
 });
-
-const themeToggle = document.getElementById("theme-toggle");
-
