@@ -7,7 +7,7 @@ import {
 import {
   getFirestore, doc, setDoc, getDoc, updateDoc, deleteDoc,
   collection, addDoc, onSnapshot, query, orderBy,
-  where, getDocs
+  where, getDocs, limit, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -79,6 +79,12 @@ let unsubscribePartnerPresence = null;
 
 let replyingTo = null; // Tracks the message being replied to
 let editingMessageId = null; // Tracks the message being edited
+
+// Fix 1: keyed DOM nodes so we update in-place instead of full re-render
+const messageElements = new Map(); // msgId → bubble element
+
+// Fix 2: track which messages we've already marked read to avoid redundant writes
+const markedAsRead = new Set();
 
 const presenceListeners = new Map();
 let typingTimeout = null;
@@ -428,6 +434,8 @@ function selectContact(partnerUid, partnerCode, itemEl) {
   currentPartnerCode = partnerCode;
   currentChatId      = getChatId(currentUser.uid, partnerUid);
 
+  markedAsRead.clear(); // Fix 2: reset per-session read-tracking for new chat
+
   noChatSelected.classList.add("hidden");
   activeChatWindow.classList.remove("hidden");
   chatWithHeader.innerText = partnerCode;
@@ -450,105 +458,153 @@ function selectContact(partnerUid, partnerCode, itemEl) {
 
 // ─── Messaging ───────────────────────────────────────────────────────────────
 
+// ── Fix 1: Build a bubble once; update it in-place on changes ────────────────
+
+function buildReceiptEl(readBy) {
+  const receipt = document.createElement("span");
+  receipt.classList.add("read-receipt");
+  refreshReceiptEl(receipt, readBy);
+  return receipt;
+}
+
+function refreshReceiptEl(receipt, readBy) {
+  const partnerReadTime = readBy?.[currentPartnerUid];
+  receipt.innerText = partnerReadTime ? ` • Read ${formatTime(partnerReadTime)}` : ` • Delivered`;
+  receipt.classList.toggle("is-read", !!partnerReadTime);
+}
+
+function buildReactionsEl(msgId, reactions) {
+  const container = document.createElement("div");
+  container.classList.add("message-reactions");
+  refreshReactionsEl(container, msgId, reactions);
+  return container;
+}
+
+function refreshReactionsEl(container, msgId, reactions) {
+  container.innerHTML = "";
+  if (!reactions) return;
+  Object.entries(reactions).forEach(([emoji, uids]) => {
+    if (!uids || uids.length === 0) return;
+    const badge = document.createElement("div");
+    badge.classList.add("reaction-badge");
+    if (uids.includes(currentUser.uid)) badge.classList.add("my-reaction");
+    badge.innerHTML = `<span>${emoji}</span> <small>${uids.length}</small>`;
+    badge.onclick = (e) => { e.stopPropagation(); toggleReaction(msgId, emoji, reactions); };
+    container.appendChild(badge);
+  });
+}
+
+function createMessageBubble(msgId, msg, isSent) {
+  const bubble = document.createElement("div");
+  bubble.classList.add("message", isSent ? "sent" : "received");
+  bubble.dataset.id = msgId;
+  bubble.ondblclick = () => setupReply(msg.text, isSent ? "You" : currentPartnerCode);
+
+  const bubbleContent = document.createElement("div");
+  bubbleContent.classList.add("message-content");
+
+  if (msg.replyTo) {
+    const replyQuote = document.createElement("div");
+    replyQuote.classList.add("reply-quote");
+    replyQuote.innerHTML = `<small>${msg.replyTo.senderCode}</small><p>${msg.replyTo.text}</p>`;
+    bubbleContent.appendChild(replyQuote);
+  }
+
+  const textSpan = document.createElement("span");
+  textSpan.classList.add("message-text");
+  textSpan.innerText = msg.text;
+  bubbleContent.appendChild(textSpan);
+
+  bubbleContent.appendChild(buildReactionsEl(msgId, msg.reactions));
+
+  const infoDiv = document.createElement("div");
+  infoDiv.classList.add("message-info");
+
+  const editedSpan = document.createElement("span");
+  editedSpan.classList.add("edited-indicator");
+  editedSpan.innerText = msg.edited ? "edited" : "";
+  infoDiv.appendChild(editedSpan);
+
+  const timeSpan = document.createElement("span");
+  timeSpan.innerText = formatTime(msg.createdAt);
+  infoDiv.appendChild(timeSpan);
+
+  if (isSent) infoDiv.appendChild(buildReceiptEl(msg.readBy));
+
+  bubbleContent.appendChild(infoDiv);
+  bubble.appendChild(bubbleContent);
+  return bubble;
+}
+
+function updateMessageBubble(bubble, msgId, msg, isSent) {
+  const content = bubble.querySelector(".message-content");
+
+  // Text may change on edit
+  const textSpan = content.querySelector(".message-text");
+  if (textSpan) textSpan.innerText = msg.text;
+
+  // "edited" label
+  const editedSpan = content.querySelector(".edited-indicator");
+  if (editedSpan) editedSpan.innerText = msg.edited ? "edited" : "";
+
+  // Reactions — refresh the existing container
+  const reactionsEl = content.querySelector(".message-reactions");
+  if (reactionsEl) refreshReactionsEl(reactionsEl, msgId, msg.reactions);
+
+  // Read receipt — only on sent messages
+  if (isSent) {
+    const receipt = content.querySelector(".read-receipt");
+    if (receipt) refreshReceiptEl(receipt, msg.readBy);
+  }
+
+  // Keep dblclick handler in sync (text may have changed)
+  bubble.ondblclick = () => setupReply(msg.text, isSent ? "You" : currentPartnerCode);
+}
+
 function loadMessages() {
   if (!currentChatId) return;
   unsubscribeMessages?.();
+  messagesDiv.innerHTML = "";
+  messageElements.clear();
 
   const q = query(collection(db, "chats", currentChatId, "messages"), orderBy("createdAt"));
 
   unsubscribeMessages = onSnapshot(q, (snapshot) => {
-    const hasChanges = snapshot.docChanges().length > 0;
-    const isLocalUpdate = snapshot.metadata.hasPendingWrites;
+    let didAddMessages = false;
+    let lastNewIncomingMsg = null;
 
-    messagesDiv.innerHTML = "";
-    
-    snapshot.forEach((docSnap) => {
+    snapshot.docChanges().forEach((change) => {
+      const docSnap = change.doc;
       const msg = docSnap.data();
       const isSent = msg.sender === currentUser.uid;
 
-      if (hasChanges && !isLocalUpdate && !isSent && docSnap.id === snapshot.docs[snapshot.docs.length - 1].id) {
-        sendLocalNotification(currentPartnerCode, msg.text);
+      if (change.type === "added") {
+        const bubble = createMessageBubble(docSnap.id, msg, isSent);
+        messageElements.set(docSnap.id, bubble);
+        messagesDiv.appendChild(bubble);
+        didAddMessages = true;
+        if (!isSent && !snapshot.metadata.hasPendingWrites) {
+          lastNewIncomingMsg = msg; // track for notification + read-marking
+        }
+      } else if (change.type === "modified") {
+        const existing = messageElements.get(docSnap.id);
+        if (existing) updateMessageBubble(existing, docSnap.id, msg, isSent);
+      } else if (change.type === "removed") {
+        const existing = messageElements.get(docSnap.id);
+        if (existing) { existing.remove(); messageElements.delete(docSnap.id); }
       }
-
-      // 1. Create bubble and link the ID for reactions
-      const bubble = document.createElement("div");
-      bubble.classList.add("message", isSent ? "sent" : "received");
-      bubble.dataset.id = docSnap.id; 
-
-      bubble.ondblclick = () => {
-        setupReply(msg.text, isSent ? "You" : currentPartnerCode);
-      };
-
-      const bubbleContent = document.createElement("div");
-      bubbleContent.classList.add("message-content");
-
-      if (msg.replyTo) {
-        const replyQuote = document.createElement("div");
-        replyQuote.classList.add("reply-quote");
-        replyQuote.innerHTML = `<small>${msg.replyTo.senderCode}</small><p>${msg.replyTo.text}</p>`;
-        bubbleContent.appendChild(replyQuote);
-      }
-
-      const textSpan = document.createElement("span");
-      textSpan.classList.add("message-text");
-      textSpan.innerText = msg.text;
-      bubbleContent.appendChild(textSpan);
-
-      // --- REACTIONS (NOW INSIDE THE LOOP) ---
-      if (msg.reactions) {
-        const reactionsDiv = document.createElement("div");
-        reactionsDiv.classList.add("message-reactions");
-        
-        Object.entries(msg.reactions).forEach(([emoji, uids]) => {
-          if (!uids || uids.length === 0) return;
-          
-          const badge = document.createElement("div");
-          badge.classList.add("reaction-badge");
-          if (uids.includes(currentUser.uid)) badge.classList.add("my-reaction");
-          
-          badge.innerHTML = `<span>${emoji}</span> <small>${uids.length}</small>`;
-          badge.onclick = (e) => {
-            e.stopPropagation(); 
-            toggleReaction(docSnap.id, emoji, msg.reactions);
-          };
-          
-          reactionsDiv.appendChild(badge);
-        });
-        bubbleContent.appendChild(reactionsDiv);
-      }
-
-      const infoDiv = document.createElement("div");
-      infoDiv.classList.add("message-info");
-
-      if (msg.edited) {
-        const editedSpan = document.createElement("span");
-        editedSpan.classList.add("edited-indicator");
-        editedSpan.innerText = "edited";
-        infoDiv.appendChild(editedSpan);
-      }
-
-      const timeSpan = document.createElement("span");
-      timeSpan.innerText = formatTime(msg.createdAt);
-      infoDiv.appendChild(timeSpan);
-
-      if (isSent) {
-        const partnerReadTime = msg.readBy && msg.readBy[currentPartnerUid];
-        const receipt = document.createElement("span");
-        receipt.classList.add("read-receipt");
-        receipt.innerText = partnerReadTime ? ` • Read ${formatTime(partnerReadTime)}` : ` • Delivered`;
-        if (partnerReadTime) receipt.classList.add("is-read");
-        infoDiv.appendChild(receipt);
-      }
-
-      bubbleContent.appendChild(infoDiv);
-      bubble.appendChild(bubbleContent);
-      messagesDiv.appendChild(bubble);
     });
 
-    messagesDiv.scrollTop = messagesDiv.scrollHeight;
-    markMessagesAsRead(currentChatId);
+    if (didAddMessages) messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+    // Fix 2: only fire read-marking when a new incoming message actually arrived
+    if (lastNewIncomingMsg) {
+      sendLocalNotification(currentPartnerCode, lastNewIncomingMsg.text);
+      markMessagesAsRead(currentChatId);
+    }
   });
 }
+// Fix 2: batch writes + per-session dedup so we never write the same doc twice
 async function markMessagesAsRead(chatId) {
   if (!isActivelyOnTab() || !currentUser) return;
 
@@ -558,12 +614,20 @@ async function markMessagesAsRead(chatId) {
   );
 
   const snap = await getDocs(q);
+  const batch = writeBatch(db);
+  let hasUpdates = false;
+
   snap.forEach((docSnap) => {
-    const msg = docSnap.data();
-    if (!msg.readBy?.[currentUser.uid]) {
-      updateDoc(docSnap.ref, { [`readBy.${currentUser.uid}`]: Date.now() });
+    if (markedAsRead.has(docSnap.id)) return; // already written this session
+    const readBy = docSnap.data().readBy;
+    if (!readBy?.[currentUser.uid]) {
+      batch.update(docSnap.ref, { [`readBy.${currentUser.uid}`]: Date.now() });
+      markedAsRead.add(docSnap.id);
+      hasUpdates = true;
     }
   });
+
+  if (hasUpdates) await batch.commit();
 }
 
 sendBtn.onclick = async () => {
